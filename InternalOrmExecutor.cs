@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
@@ -8,7 +8,7 @@ using System.Reflection;
 
 namespace InternalOrm
 {
-   
+
     internal class InternalOrmExecutor
     {
         public Utility ut = new Utility();
@@ -141,10 +141,14 @@ namespace InternalOrm
             {
                 if (type.IsPrimitive || type == typeof(string)
                     || type == typeof(DateTime) || type == typeof(decimal)
-                    || type == typeof(Enum))
+                    || type.IsEnum)
                 {
                     object value = reader.GetValue(0);
-                    return value == DBNull.Value ? default(T) : (T)Convert.ChangeType(value, type);
+                    if (value == DBNull.Value)
+                        return default(T);
+
+                    return (T)ut.ConvertToType(value, type);
+
                 }
 
                 T entity = new T();
@@ -161,7 +165,10 @@ namespace InternalOrm
                     {
                         object value = reader.GetValue(i);
                         if (value != DBNull.Value)
-                            prop.SetValue(entity, Convert.ChangeType(value, ut.GetActualType(prop.PropertyType)));
+                        {
+                            var actualType = ut.GetActualType(prop.PropertyType);
+                            prop.SetValue(entity, ut.ConvertToType(value, actualType));
+                        }
                     }
                 }
 
@@ -170,6 +177,8 @@ namespace InternalOrm
 
             return default(T);
         }
+
+
         internal T QueryFirstOrDefault<T>(SqlConnection con, string query, object parameters = null) where T : new()
         {
             var list = MapQueryResultsToList<T>(con, query, parameters);
@@ -228,7 +237,7 @@ namespace InternalOrm
                 }
             }
         }
-    
+
 
     }
 }
