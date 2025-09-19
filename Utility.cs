@@ -6,32 +6,71 @@ namespace InternalOrm
 {
     internal class Utility
     {
-        internal Type GetActualType(Type propertyType)
+        internal static Type GetActualType(Type type)
         {
-            return Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+                return Nullable.GetUnderlyingType(type);
+            return type;
         }
 
-      
-        internal PropertyInfo[] GetCachedProperties(Type type, Dictionary<Type, PropertyInfo[]> _propertyCache)
+        internal PropertyInfo[] GetCachedProperties(Type type, Dictionary<Type, PropertyInfo[]> cache)
         {
-            if (!_propertyCache.ContainsKey(type))
+            PropertyInfo[] props;
+            if (!cache.TryGetValue(type, out props))
             {
-                _propertyCache[type] = type.GetProperties();
+                props = type.GetProperties();
+                cache[type] = props;
             }
-            return _propertyCache[type];
+            return props;
         }
 
+        internal bool IsValueTuple(Type t)
+        {
+            return t.IsValueType && t.FullName != null && t.FullName.StartsWith("System.ValueTuple", StringComparison.Ordinal);
+        }
+
+        internal bool IsSimple(Type t)
+        {
+            return t.IsPrimitive || t == typeof(string) || t == typeof(DateTime) ||
+                   t == typeof(decimal) || t.IsEnum || t == typeof(Guid) ||
+                   t == typeof(DateTimeOffset) || t == typeof(byte[]);
+        }
 
         internal object ConvertToType(object value, Type targetType)
         {
-            if (targetType.IsEnum)
+            if (value == null || value is DBNull) return null;
+            var actual = GetActualType(targetType);
+
+            if (actual.IsEnum)
             {
-                return value is string stringValue
-                    ? Enum.Parse(targetType, stringValue, ignoreCase: true)
-                    : Enum.ToObject(targetType, value);
+                if (value is string) return Enum.Parse(actual, (string)value, true);
+                return Enum.ToObject(actual, value);
             }
 
-            return Convert.ChangeType(value, targetType);
+            if (actual == typeof(Guid))
+            {
+                if (value is Guid) return value;
+                return new Guid(value.ToString());
+            }
+
+            if (actual == typeof(byte[])) return (byte[])value;
+
+            if (actual == typeof(DateTimeOffset))
+            {
+                if (value is DateTimeOffset) return value;
+                if (value is DateTime) return new DateTimeOffset((DateTime)value);
+                return DateTimeOffset.Parse(value.ToString());
+            }
+
+            return Convert.ChangeType(value, actual);
         }
+
+        internal object GetDefault(Type t)
+        {
+            var u = Nullable.GetUnderlyingType(t);
+            if (u != null) return null;
+            return t.IsValueType ? Activator.CreateInstance(t) : null;
+        }
+
     }
 }
